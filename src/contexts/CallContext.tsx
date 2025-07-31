@@ -14,6 +14,7 @@ import {
   MediaStream,
 } from 'react-native-webrtc';
 import {CONFIG} from '../config/config';
+import {hapticLight} from '../utils/haptics';
 
 interface CallState {
   isConnected: boolean;
@@ -31,6 +32,12 @@ interface CallState {
   screenSharingUser: string | null;
   isCreator: boolean;
   connectionStatus: 'disconnected' | 'connecting' | 'connected' | 'error';
+  // New fields for better UX
+  connectionQuality: 'excellent' | 'good' | 'poor' | 'disconnected';
+  errorMessage: string | null;
+  isReconnecting: boolean;
+  callDuration: number; // in seconds
+  lastActivity: number; // timestamp
 }
 
 interface ChatMessage {
@@ -67,7 +74,17 @@ type CallAction =
       type: 'SET_CONNECTION_STATUS';
       payload: 'disconnected' | 'connecting' | 'connected' | 'error';
     }
-  | {type: 'RESET_CALL'};
+  | {type: 'RESET_CALL'}
+  // New actions for improved UX
+  | {
+      type: 'SET_CONNECTION_QUALITY';
+      payload: 'excellent' | 'good' | 'poor' | 'disconnected';
+    }
+  | {type: 'SET_ERROR_MESSAGE'; payload: string | null}
+  | {type: 'SET_RECONNECTING'; payload: boolean}
+  | {type: 'UPDATE_CALL_DURATION'; payload: number}
+  | {type: 'UPDATE_LAST_ACTIVITY'; payload: number}
+  | {type: 'CLEAR_ERROR'};
 
 const initialState: CallState = {
   isConnected: false,
@@ -85,6 +102,12 @@ const initialState: CallState = {
   screenSharingUser: null,
   isCreator: false,
   connectionStatus: 'disconnected',
+  // New fields for better UX
+  connectionQuality: 'disconnected',
+  errorMessage: null,
+  isReconnecting: false,
+  callDuration: 0,
+  lastActivity: 0,
 };
 
 const callReducer = (state: CallState, action: CallAction): CallState => {
@@ -125,6 +148,18 @@ const callReducer = (state: CallState, action: CallAction): CallState => {
         roomId: state.roomId,
         username: state.username,
       };
+    case 'SET_CONNECTION_QUALITY':
+      return {...state, connectionQuality: action.payload};
+    case 'SET_ERROR_MESSAGE':
+      return {...state, errorMessage: action.payload};
+    case 'SET_RECONNECTING':
+      return {...state, isReconnecting: action.payload};
+    case 'UPDATE_CALL_DURATION':
+      return {...state, callDuration: action.payload};
+    case 'UPDATE_LAST_ACTIVITY':
+      return {...state, lastActivity: action.payload};
+    case 'CLEAR_ERROR':
+      return {...state, errorMessage: null};
     default:
       return state;
   }
@@ -174,6 +209,10 @@ export const CallProvider: React.FC<CallProviderProps> = ({children}) => {
   const reconnectAttemptsRef = useRef(0);
   const maxReconnectAttempts = 5;
 
+  // New refs for improved functionality
+  const callDurationRef = useRef<NodeJS.Timeout | null>(null);
+  const connectionQualityRef = useRef<NodeJS.Timeout | null>(null);
+
   // Update refs when state changes
   useEffect(() => {
     stateRef.current = state;
@@ -186,6 +225,82 @@ export const CallProvider: React.FC<CallProviderProps> = ({children}) => {
   useEffect(() => {
     peerConnectionRef.current = peerConnection;
   }, [peerConnection]);
+
+  // Call duration timer
+  useEffect(() => {
+    if (state.isInCall) {
+      callDurationRef.current = setInterval(() => {
+        dispatch({
+          type: 'UPDATE_CALL_DURATION',
+          payload: state.callDuration + 1,
+        });
+      }, 1000);
+    } else {
+      if (callDurationRef.current) {
+        clearInterval(callDurationRef.current);
+        callDurationRef.current = null;
+      }
+    }
+
+    return () => {
+      if (callDurationRef.current) {
+        clearInterval(callDurationRef.current);
+      }
+    };
+  }, [state.isInCall, state.callDuration]);
+
+  // Connection quality monitoring
+  useEffect(() => {
+    if (state.isInCall && peerConnectionRef.current) {
+      connectionQualityRef.current = setInterval(() => {
+        monitorConnectionQuality();
+      }, 5000); // Check every 5 seconds
+    } else {
+      if (connectionQualityRef.current) {
+        clearInterval(connectionQualityRef.current);
+        connectionQualityRef.current = null;
+      }
+    }
+
+    return () => {
+      if (connectionQualityRef.current) {
+        clearInterval(connectionQualityRef.current);
+      }
+    };
+  }, [state.isInCall]);
+
+  const monitorConnectionQuality = () => {
+    if (!peerConnectionRef.current) return;
+
+    try {
+      const connectionState = peerConnectionRef.current.connectionState;
+      const iceConnectionState = peerConnectionRef.current.iceConnectionState;
+
+      let quality: 'excellent' | 'good' | 'poor' | 'disconnected' =
+        'disconnected';
+
+      if (
+        connectionState === 'connected' &&
+        iceConnectionState === 'connected'
+      ) {
+        quality = 'excellent';
+      } else if (
+        connectionState === 'connected' ||
+        iceConnectionState === 'connected'
+      ) {
+        quality = 'good';
+      } else if (
+        connectionState === 'connecting' ||
+        iceConnectionState === 'checking'
+      ) {
+        quality = 'poor';
+      }
+
+      dispatch({type: 'SET_CONNECTION_QUALITY', payload: quality});
+    } catch (error) {
+      console.log('Error monitoring connection quality:', error);
+    }
+  };
 
   // Initialize socket connection with improved error handling
   useEffect(() => {
@@ -246,6 +361,10 @@ export const CallProvider: React.FC<CallProviderProps> = ({children}) => {
       newSocket.on('connect_error', error => {
         console.log('🔌 Socket connection error:', error);
         dispatch({type: 'SET_CONNECTION_STATUS', payload: 'error'});
+        dispatch({
+          type: 'SET_ERROR_MESSAGE',
+          payload: 'Connection failed. Please check your internet connection.',
+        });
 
         // Attempt to reconnect on connection error
         if (reconnectAttemptsRef.current < maxReconnectAttempts) {
@@ -255,10 +374,17 @@ export const CallProvider: React.FC<CallProviderProps> = ({children}) => {
             }/${maxReconnectAttempts})`,
           );
           reconnectAttemptsRef.current++;
+          dispatch({type: 'SET_RECONNECTING', payload: true});
 
           reconnectTimeoutRef.current = setTimeout(() => {
             connectSocket();
           }, 3000);
+        } else {
+          dispatch({
+            type: 'SET_ERROR_MESSAGE',
+            payload:
+              'Unable to connect after multiple attempts. Please try again later.',
+          });
         }
       });
 
@@ -266,6 +392,8 @@ export const CallProvider: React.FC<CallProviderProps> = ({children}) => {
         console.log('🔌 Socket reconnected after', attemptNumber, 'attempts');
         dispatch({type: 'SET_CONNECTED', payload: true});
         dispatch({type: 'SET_CONNECTION_STATUS', payload: 'connected'});
+        dispatch({type: 'SET_RECONNECTING', payload: false});
+        dispatch({type: 'CLEAR_ERROR'});
         reconnectAttemptsRef.current = 0;
       });
 
@@ -644,6 +772,7 @@ export const CallProvider: React.FC<CallProviderProps> = ({children}) => {
       if (audioTrack) {
         audioTrack.enabled = !audioTrack.enabled;
         dispatch({type: 'SET_MUTED', payload: !audioTrack.enabled});
+        hapticLight();
       }
     }
   };
@@ -654,6 +783,7 @@ export const CallProvider: React.FC<CallProviderProps> = ({children}) => {
       if (videoTrack) {
         videoTrack.enabled = !videoTrack.enabled;
         dispatch({type: 'SET_CAMERA_OFF', payload: !videoTrack.enabled});
+        hapticLight();
       }
     }
   };

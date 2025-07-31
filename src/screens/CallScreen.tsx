@@ -18,6 +18,12 @@ import {
 import {RTCView} from 'react-native-webrtc';
 import {useNavigation} from '@react-navigation/native';
 import {useCall} from '../contexts/CallContext';
+import Icon from '../components/Icon';
+import ConnectionQualityIndicator from '../components/ConnectionQualityIndicator';
+import ErrorDisplay from '../components/ErrorDisplay';
+import CallDuration from '../components/CallDuration';
+import LoadingSpinner from '../components/LoadingSpinner';
+import {hapticMedium, hapticError} from '../utils/haptics';
 
 const {width, height} = Dimensions.get('window');
 
@@ -41,7 +47,6 @@ const CallScreen = () => {
 
   // Animation values
   const fadeAnim = new Animated.Value(1);
-  const slideAnim = new Animated.Value(0);
 
   useEffect(() => {
     console.log('📱 CallScreen mounted');
@@ -100,12 +105,14 @@ const CallScreen = () => {
   };
 
   const handleEndCall = () => {
+    hapticMedium();
     Alert.alert('End Call', 'Are you sure you want to end the call?', [
       {text: 'Cancel', style: 'cancel'},
       {
         text: 'End Call',
         style: 'destructive',
         onPress: () => {
+          hapticError();
           leaveRoom();
           navigation.goBack();
         },
@@ -191,9 +198,7 @@ const CallScreen = () => {
         {/* Screen Sharing Indicator */}
         {state.screenSharingUser && !state.screenStream && (
           <Animated.View style={styles.screenShareIndicator}>
-            <View style={styles.screenShareIcon}>
-              <Text style={styles.screenShareIconText}>🖥️</Text>
-            </View>
+            <Icon name="screen-share" size={16} color="#ffffff" />
             <Text style={styles.screenShareText}>
               {state.screenSharingUser === socket?.id
                 ? 'You are sharing screen'
@@ -202,34 +207,31 @@ const CallScreen = () => {
           </Animated.View>
         )}
 
-        {/* Loading State - when no video streams are available */}
-        {!hasAnyVideo && (
-          <View style={styles.loadingContainer}>
-            <View style={styles.loadingContent}>
-              <Text style={styles.loadingTitle}>Connecting...</Text>
-              <Text style={styles.loadingSubtitle}>
-                Waiting for video streams
-              </Text>
-              <View style={styles.loadingDots}>
-                <View style={[styles.loadingDot, styles.loadingDotActive]} />
-                <View style={styles.loadingDot} />
-                <View style={styles.loadingDot} />
-              </View>
-              <View style={styles.debugInfo}>
-                <Text style={styles.debugText}>
-                  Local Stream: {hasLocalVideo ? '✅' : '❌'}
-                </Text>
-                <Text style={styles.debugText}>
-                  Remote Stream: {hasRemoteVideo ? '✅' : '❌'}
-                </Text>
-                <Text style={styles.debugText}>
-                  Participants: {state.participants.length}
-                </Text>
-                <Text style={styles.debugText}>Room: {state.roomId}</Text>
-              </View>
-            </View>
+        {/* Connection Quality Indicator */}
+        {state.isInCall && (
+          <View style={styles.connectionQualityContainer}>
+            <ConnectionQualityIndicator quality={state.connectionQuality} />
           </View>
         )}
+
+        {/* Call Duration */}
+        {state.isInCall && state.callDuration > 0 && (
+          <CallDuration duration={state.callDuration} />
+        )}
+
+        {/* Error Display */}
+        <ErrorDisplay
+          error={state.errorMessage}
+          onRetry={() => {
+            // Handle retry logic
+          }}
+          onDismiss={() => {
+            // Handle dismiss logic
+          }}
+        />
+
+        {/* Loading State - when no video streams are available */}
+        {!hasAnyVideo && <LoadingSpinner />}
 
         {/* Small Video Thumbnail */}
         {hasAnyVideo && (
@@ -262,7 +264,7 @@ const CallScreen = () => {
               </View>
               {!isLocalVideoLarge && state.isMuted && (
                 <View style={styles.muteIndicator}>
-                  <Text style={styles.muteIcon}>🔇</Text>
+                  <Icon name="mic-off" size={12} color="#ffffff" />
                 </View>
               )}
             </View>
@@ -293,9 +295,11 @@ const CallScreen = () => {
           ]}
           onPress={toggleMute}>
           <View style={styles.controlButtonInner}>
-            <Text style={styles.controlButtonIcon}>
-              {state.isMuted ? '🔇' : '🎤'}
-            </Text>
+            <Icon
+              name={state.isMuted ? 'mic-off' : 'mic'}
+              size={20}
+              color="#ffffff"
+            />
           </View>
         </TouchableOpacity>
 
@@ -306,9 +310,11 @@ const CallScreen = () => {
           ]}
           onPress={toggleCamera}>
           <View style={styles.controlButtonInner}>
-            <Text style={styles.controlButtonIcon}>
-              {state.isCameraOff ? '📷' : '📹'}
-            </Text>
+            <Icon
+              name={state.isCameraOff ? 'videocam-off' : 'videocam'}
+              size={20}
+              color="#ffffff"
+            />
           </View>
         </TouchableOpacity>
 
@@ -316,7 +322,7 @@ const CallScreen = () => {
           style={[styles.controlButton, styles.chatButton]}
           onPress={() => setShowChat(!showChat)}>
           <View style={styles.controlButtonInner}>
-            <Text style={styles.controlButtonIcon}>💬</Text>
+            <Icon name="chat" size={20} color="#ffffff" />
             {unreadCount > 0 && (
               <View style={styles.messageBadge}>
                 <Text style={styles.messageBadgeText}>
@@ -336,9 +342,11 @@ const CallScreen = () => {
             state.isScreenSharing ? stopScreenSharing : startScreenSharing
           }>
           <View style={styles.controlButtonInner}>
-            <Text style={styles.controlButtonIcon}>
-              {state.isScreenSharing ? '🖥️' : '📺'}
-            </Text>
+            <Icon
+              name={state.isScreenSharing ? 'screen-share' : 'cast'}
+              size={20}
+              color="#ffffff"
+            />
           </View>
         </TouchableOpacity>
 
@@ -346,7 +354,7 @@ const CallScreen = () => {
           style={[styles.controlButton, styles.detailsButton]}
           onPress={() => setShowDetails(true)}>
           <View style={styles.controlButtonInner}>
-            <Text style={styles.controlButtonIcon}>ℹ️</Text>
+            <Icon name="info" size={20} color="#ffffff" />
           </View>
         </TouchableOpacity>
 
@@ -354,7 +362,7 @@ const CallScreen = () => {
           style={[styles.controlButton, styles.endCallButton]}
           onPress={handleEndCall}>
           <View style={styles.controlButtonInner}>
-            <Text style={styles.controlButtonIcon}>📞</Text>
+            <Icon name="call-end" size={20} color="#ffffff" />
           </View>
         </TouchableOpacity>
       </Animated.View>
@@ -394,7 +402,7 @@ const CallScreen = () => {
 
               <View style={styles.detailSection}>
                 <Text style={styles.detailSectionTitle}>Participants</Text>
-                {state.participants.map((participant, index) => (
+                {state.participants.map(participant => (
                   <View
                     key={participant.userId}
                     style={styles.participantDetail}>
@@ -1006,6 +1014,21 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontWeight: '600',
     fontSize: 14,
+  },
+  connectionQualityContainer: {
+    position: 'absolute',
+    top: 100, // Adjust position as needed
+    left: 20,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    borderRadius: 20,
+    padding: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: {width: 0, height: 2},
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 4,
   },
 });
 

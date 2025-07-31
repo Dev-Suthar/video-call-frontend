@@ -9,13 +9,13 @@ import {
   SafeAreaView,
   KeyboardAvoidingView,
   Platform,
-  Modal,
-  FlatList,
   Share,
 } from 'react-native';
 import {useNavigation} from '@react-navigation/native';
 import {useCall} from '../contexts/CallContext';
 import {requestPermissions} from '../utils/permissions';
+import Icon from '../components/Icon';
+import ErrorDisplay from '../components/ErrorDisplay';
 
 const HomeScreen = () => {
   const [roomId, setRoomId] = useState('');
@@ -35,6 +35,15 @@ const HomeScreen = () => {
       navigation.navigate('Call' as never);
     }
   }, [state.isInCall, navigation]);
+
+  // Clear error when user takes action
+  const handleClearError = () => {
+    // This will be handled by the context
+  };
+
+  const handleRetryConnection = () => {
+    // This will be handled by the context
+  };
 
   const generateRoomId = () => {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
@@ -110,16 +119,23 @@ const HomeScreen = () => {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.content}>
-          <View style={styles.header}>
+          <View style={styles.mainHeader}>
             <Text style={styles.title}>Video Calling</Text>
             <Text style={styles.subtitle}>Choose an option to get started</Text>
           </View>
+
+          {/* Error Display */}
+          <ErrorDisplay
+            error={state.errorMessage}
+            onRetry={handleRetryConnection}
+            onDismiss={handleClearError}
+          />
 
           <View style={styles.optionsContainer}>
             <TouchableOpacity
               style={styles.optionButton}
               onPress={() => setCurrentFlow('join')}>
-              <Text style={styles.optionIcon}>📞</Text>
+              <Icon name="video-call" size={48} color="#007AFF" />
               <Text style={styles.optionTitle}>Join a Room</Text>
               <Text style={styles.optionSubtitle}>
                 Enter room ID to join existing call
@@ -129,7 +145,7 @@ const HomeScreen = () => {
             <TouchableOpacity
               style={styles.optionButton}
               onPress={() => setCurrentFlow('create')}>
-              <Text style={styles.optionIcon}>➕</Text>
+              <Icon name="add-circle" size={48} color="#34C759" />
               <Text style={styles.optionTitle}>Create a Room</Text>
               <Text style={styles.optionSubtitle}>Start a new video call</Text>
             </TouchableOpacity>
@@ -145,6 +161,9 @@ const HomeScreen = () => {
             <Text style={styles.statusText}>
               {state.isConnected ? 'Connected to server' : 'Connecting...'}
             </Text>
+            {state.isReconnecting && (
+              <Text style={styles.reconnectingText}>Reconnecting...</Text>
+            )}
           </View>
         </View>
       </SafeAreaView>
@@ -158,14 +177,19 @@ const HomeScreen = () => {
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           style={styles.keyboardView}>
+          {/* Header */}
+          <View style={styles.headerContainer}>
+            <TouchableOpacity
+              style={styles.headerBackButton}
+              onPress={() => setCurrentFlow('main')}>
+              <Icon name="arrow-back" size={24} color="#007AFF" />
+            </TouchableOpacity>
+            <Text style={styles.headerTitle}>Join a Room</Text>
+            <View style={styles.headerRight} />
+          </View>
+
           <View style={styles.content}>
-            <View style={styles.header}>
-              <TouchableOpacity
-                style={styles.backButton}
-                onPress={() => setCurrentFlow('main')}>
-                <Text style={styles.backButtonText}>← Back</Text>
-              </TouchableOpacity>
-              <Text style={styles.title}>Join a Room</Text>
+            <View style={styles.formHeader}>
               <Text style={styles.subtitle}>Enter room details to join</Text>
             </View>
 
@@ -203,6 +227,12 @@ const HomeScreen = () => {
                 ]}
                 onPress={handleJoinRoom}
                 disabled={!roomId.trim() || !username.trim()}>
+                <Icon
+                  name="login"
+                  size={20}
+                  color="#ffffff"
+                  style={styles.buttonIcon}
+                />
                 <Text style={styles.joinButtonText}>Join Room</Text>
               </TouchableOpacity>
             </View>
@@ -219,14 +249,19 @@ const HomeScreen = () => {
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           style={styles.keyboardView}>
+          {/* Header */}
+          <View style={styles.headerContainer}>
+            <TouchableOpacity
+              style={styles.headerBackButton}
+              onPress={() => setCurrentFlow('main')}>
+              <Icon name="arrow-back" size={24} color="#007AFF" />
+            </TouchableOpacity>
+            <Text style={styles.headerTitle}>Create a Room</Text>
+            <View style={styles.headerRight} />
+          </View>
+
           <View style={styles.content}>
-            <View style={styles.header}>
-              <TouchableOpacity
-                style={styles.backButton}
-                onPress={() => setCurrentFlow('main')}>
-                <Text style={styles.backButtonText}>← Back</Text>
-              </TouchableOpacity>
-              <Text style={styles.title}>Create a Room</Text>
+            <View style={styles.formHeader}>
               <Text style={styles.subtitle}>Start a new video call</Text>
             </View>
 
@@ -250,6 +285,12 @@ const HomeScreen = () => {
                 ]}
                 onPress={handleCreateRoom}
                 disabled={!username.trim()}>
+                <Icon
+                  name="add-circle"
+                  size={20}
+                  color="#ffffff"
+                  style={styles.buttonIcon}
+                />
                 <Text style={styles.createButtonText}>Create Room</Text>
               </TouchableOpacity>
             </View>
@@ -317,8 +358,8 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
-    padding: 24,
-    justifyContent: 'center',
+    paddingHorizontal: 24,
+    paddingTop: 20,
   },
   header: {
     alignItems: 'center',
@@ -402,6 +443,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 5,
+    flexDirection: 'row', // Added for icon alignment
   },
   joinButtonDisabled: {
     backgroundColor: '#3A3A3C',
@@ -411,6 +453,10 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 18,
     fontWeight: 'bold',
+    marginLeft: 10, // Added for icon spacing
+  },
+  buttonIcon: {
+    marginRight: 8, // Added for icon spacing
   },
   createButton: {
     backgroundColor: '#34C759',
@@ -459,6 +505,11 @@ const styles = StyleSheet.create({
   pending: {
     backgroundColor: '#FF9500',
   },
+  reconnectingText: {
+    color: '#FF9500',
+    fontSize: 14,
+    marginTop: 8,
+  },
   creatorControls: {
     alignItems: 'center',
     marginBottom: 24,
@@ -480,19 +531,6 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 18,
     fontWeight: 'bold',
-  },
-  backButton: {
-    position: 'absolute',
-    top: 20,
-    left: 20,
-    padding: 12,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-  },
-  backButtonText: {
-    color: '#007AFF',
-    fontSize: 18,
-    fontWeight: '600',
   },
   roomInfoContainer: {
     marginBottom: 48,
@@ -589,6 +627,35 @@ const styles = StyleSheet.create({
   },
   requestsList: {
     flex: 1,
+  },
+  headerContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 24,
+    paddingHorizontal: 20,
+  },
+  headerBackButton: {
+    padding: 10,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  headerTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#ffffff',
+    flex: 1,
+    textAlign: 'center',
+  },
+  headerRight: {
+    width: 40, // Adjust as needed for spacing
+  },
+  formHeader: {
+    marginBottom: 24,
+  },
+  mainHeader: {
+    alignItems: 'center',
+    marginBottom: 48,
   },
 });
 
