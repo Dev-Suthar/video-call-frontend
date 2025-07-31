@@ -9,9 +9,9 @@ import {
 export const createPeerConnection = (): RTCPeerConnection => {
   return new RTCPeerConnection({
     iceServers: [
-      { urls: 'stun:stun.l.google.com:19302' },
-      { urls: 'stun:stun1.l.google.com:19302' },
-      { urls: 'stun:stun2.l.google.com:19302' },
+      {urls: 'stun:stun.l.google.com:19302'},
+      {urls: 'stun:stun1.l.google.com:19302'},
+      {urls: 'stun:stun2.l.google.com:19302'},
     ],
     iceCandidatePoolSize: 10,
   });
@@ -51,14 +51,16 @@ export const getDisplayMedia = async (): Promise<MediaStream> => {
 
 export const addTracksToPeerConnection = (
   peerConnection: RTCPeerConnection,
-  stream: MediaStream
+  stream: MediaStream,
 ): void => {
-  stream.getTracks().forEach((track) => {
+  stream.getTracks().forEach(track => {
     peerConnection.addTrack(track, stream);
   });
 };
 
-export const createOffer = async (peerConnection: RTCPeerConnection): Promise<RTCSessionDescription> => {
+export const createOffer = async (
+  peerConnection: RTCPeerConnection,
+): Promise<RTCSessionDescription> => {
   try {
     const offer = await peerConnection.createOffer({
       offerToReceiveAudio: true,
@@ -72,7 +74,9 @@ export const createOffer = async (peerConnection: RTCPeerConnection): Promise<RT
   }
 };
 
-export const createAnswer = async (peerConnection: RTCPeerConnection): Promise<RTCSessionDescription> => {
+export const createAnswer = async (
+  peerConnection: RTCPeerConnection,
+): Promise<RTCSessionDescription> => {
   try {
     const answer = await peerConnection.createAnswer();
     await peerConnection.setLocalDescription(answer);
@@ -85,7 +89,7 @@ export const createAnswer = async (peerConnection: RTCPeerConnection): Promise<R
 
 export const setRemoteDescription = async (
   peerConnection: RTCPeerConnection,
-  description: RTCSessionDescription
+  description: RTCSessionDescription,
 ): Promise<void> => {
   try {
     await peerConnection.setRemoteDescription(description);
@@ -97,7 +101,7 @@ export const setRemoteDescription = async (
 
 export const addIceCandidate = async (
   peerConnection: RTCPeerConnection,
-  candidate: RTCIceCandidate
+  candidate: RTCIceCandidate,
 ): Promise<void> => {
   try {
     await peerConnection.addIceCandidate(candidate);
@@ -107,7 +111,9 @@ export const addIceCandidate = async (
   }
 };
 
-export const closePeerConnection = (peerConnection: RTCPeerConnection): void => {
+export const closePeerConnection = (
+  peerConnection: RTCPeerConnection,
+): void => {
   if (peerConnection) {
     peerConnection.close();
   }
@@ -115,6 +121,6 @@ export const closePeerConnection = (peerConnection: RTCPeerConnection): void => 
 
 export const stopStream = (stream: MediaStream | null): void => {
   if (stream) {
-    stream.getTracks().forEach((track) => track.stop());
+    stream.getTracks().forEach(track => track.stop());
   }
 };

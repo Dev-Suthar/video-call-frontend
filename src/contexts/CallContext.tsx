@@ -189,10 +189,8 @@ export const CallProvider: React.FC<CallProviderProps> = ({children}) => {
   // Initialize socket connection with improved error handling
   useEffect(() => {
     const connectSocket = () => {
-      // Use device IP instead of localhost for React Native
-      const socketUrl = __DEV__
-        ? 'http://192.168.29.30:3000'
-        : 'http://localhost:3000';
+      // Use cloud server URL
+      const socketUrl = 'https://video-call-backend-uifd.onrender.com';
 
       console.log('🔌 Connecting to socket server:', socketUrl);
       dispatch({type: 'SET_CONNECTION_STATUS', payload: 'connecting'});

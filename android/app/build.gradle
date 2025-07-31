@@ -115,6 +115,24 @@ android {
     kotlinOptions {
         jvmTarget = "11"
     }
+    
+    // Exclude duplicate resources from react-navigation-elements
+    android.applicationVariants.all { variant ->
+        variant.mergeResourcesProvider.configure {
+            doLast {
+                delete(fileTree(dir: outputDir, includes: ['**/node_modules_reactnavigation_elements_src_assets_*.png']))
+            }
+        }
+    }
+    
+    // Resource filtering to prevent duplicates
+    sourceSets {
+        main {
+            res {
+                excludes += ['**/node_modules_reactnavigation_elements_src_assets_*.png']
+            }
+        }
+    }
 }
 
 configurations.all {

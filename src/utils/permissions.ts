@@ -1,4 +1,4 @@
-import { PermissionsAndroid, Platform, Alert } from 'react-native';
+import {PermissionsAndroid, Platform, Alert} from 'react-native';
 
 export const requestCameraPermission = async (): Promise<boolean> => {
   if (Platform.OS === 'android') {
@@ -11,7 +11,7 @@ export const requestCameraPermission = async (): Promise<boolean> => {
           buttonNeutral: 'Ask Me Later',
           buttonNegative: 'Cancel',
           buttonPositive: 'OK',
-        }
+        },
       );
       return granted === PermissionsAndroid.RESULTS.GRANTED;
     } catch (err) {
@@ -33,7 +33,7 @@ export const requestMicrophonePermission = async (): Promise<boolean> => {
           buttonNeutral: 'Ask Me Later',
           buttonNegative: 'Cancel',
           buttonPositive: 'OK',
-        }
+        },
       );
       return granted === PermissionsAndroid.RESULTS.GRANTED;
     } catch (err) {
@@ -52,7 +52,7 @@ export const requestPermissions = async (): Promise<boolean> => {
     Alert.alert(
       'Permissions Required',
       'Camera and microphone permissions are required for video calls. Please enable them in your device settings.',
-      [{ text: 'OK' }]
+      [{text: 'OK'}],
     );
     return false;
   }
