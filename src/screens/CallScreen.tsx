@@ -1,0 +1,1012 @@
+import React, {useState, useEffect} from 'react';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  SafeAreaView,
+  Dimensions,
+  Alert,
+  Modal,
+  TextInput,
+  FlatList,
+  KeyboardAvoidingView,
+  Platform,
+  StatusBar,
+  Animated,
+} from 'react-native';
+import {RTCView} from 'react-native-webrtc';
+import {useNavigation} from '@react-navigation/native';
+import {useCall} from '../contexts/CallContext';
+
+const {width, height} = Dimensions.get('window');
+
+const CallScreen = () => {
+  const [showChat, setShowChat] = useState(false);
+  const [showDetails, setShowDetails] = useState(false);
+  const [chatMessage, setChatMessage] = useState('');
+  const [isControlsVisible, setIsControlsVisible] = useState(true);
+  const [isLocalVideoLarge, setIsLocalVideoLarge] = useState(false);
+  const navigation = useNavigation();
+  const {
+    state,
+    socket,
+    leaveRoom,
+    toggleMute,
+    toggleCamera,
+    startScreenSharing,
+    stopScreenSharing,
+    sendMessage,
+  } = useCall();
+
+  // Animation values
+  const fadeAnim = new Animated.Value(1);
+  const slideAnim = new Animated.Value(0);
+
+  useEffect(() => {
+    console.log('📱 CallScreen mounted');
+    console.log('Initial state:', {
+      isInCall: state.isInCall,
+      hasLocalStream: !!state.localStream,
+      hasRemoteStream: !!state.remoteStream,
+      participantsCount: state.participants.length,
+    });
+    return () => {
+      console.log('📱 CallScreen unmounting');
+    };
+  }, []);
+
+  useEffect(() => {
+    console.log('CallScreen: isInCall changed to:', state.isInCall);
+    if (!state.isInCall) {
+      console.log('CallScreen: Navigating back due to isInCall = false');
+      navigation.goBack();
+    }
+  }, [state.isInCall, navigation]);
+
+  // Debug effect to monitor stream changes
+  useEffect(() => {
+    console.log('Stream state changed:', {
+      hasLocalStream: !!state.localStream,
+      hasRemoteStream: !!state.remoteStream,
+      localStreamTracks: state.localStream?.getTracks().length || 0,
+      remoteStreamTracks: state.remoteStream?.getTracks().length || 0,
+    });
+  }, [state.localStream, state.remoteStream]);
+
+  // Auto-hide controls after 3 seconds
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (isControlsVisible) {
+        Animated.timing(fadeAnim, {
+          toValue: 0,
+          duration: 300,
+          useNativeDriver: true,
+        }).start();
+        setIsControlsVisible(false);
+      }
+    }, 3000);
+
+    return () => clearTimeout(timer);
+  }, [isControlsVisible]);
+
+  const showControls = () => {
+    setIsControlsVisible(true);
+    Animated.timing(fadeAnim, {
+      toValue: 1,
+      duration: 300,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const handleEndCall = () => {
+    Alert.alert('End Call', 'Are you sure you want to end the call?', [
+      {text: 'Cancel', style: 'cancel'},
+      {
+        text: 'End Call',
+        style: 'destructive',
+        onPress: () => {
+          leaveRoom();
+          navigation.goBack();
+        },
+      },
+    ]);
+  };
+
+  const handleSendMessage = () => {
+    if (chatMessage.trim()) {
+      sendMessage(chatMessage.trim());
+      setChatMessage('');
+    }
+  };
+
+  const toggleVideoView = () => {
+    setIsLocalVideoLarge(!isLocalVideoLarge);
+  };
+
+  const renderChatMessage = ({item}: {item: any}) => {
+    const isOwnMessage = item.userId === socket?.id;
+    const isOwnMessageByUsername = item.username === state.username;
+    const shouldAlignRight = isOwnMessage || isOwnMessageByUsername;
+
+    return (
+      <Animated.View
+        style={[
+          styles.chatMessage,
+          shouldAlignRight ? styles.ownMessage : styles.otherMessage,
+        ]}>
+        <Text style={styles.messageUsername}>{item.username}</Text>
+        <Text style={styles.messageText}>{item.message}</Text>
+        <Text style={styles.messageTime}>
+          {new Date(item.timestamp).toLocaleTimeString()}
+        </Text>
+      </Animated.View>
+    );
+  };
+
+  const unreadCount = state.messages.length;
+
+  // Check if we have any video streams
+  const hasAnyVideo = state.localStream || state.remoteStream;
+  const hasLocalVideo = !!state.localStream;
+  const hasRemoteVideo = !!state.remoteStream;
+
+  return (
+    <SafeAreaView style={styles.container}>
+      <StatusBar barStyle="light-content" backgroundColor="#000000" />
+
+      {/* Main Video Container */}
+      <TouchableOpacity
+        style={styles.videoContainer}
+        activeOpacity={1}
+        onPress={showControls}>
+        {/* Large Video View */}
+        {isLocalVideoLarge
+          ? // Local video as main view
+            hasLocalVideo && (
+              <RTCView
+                streamURL={state.localStream!.toURL()}
+                style={styles.mainVideo}
+                objectFit="cover"
+              />
+            )
+          : // Remote video as main view
+            hasRemoteVideo && (
+              <RTCView
+                streamURL={state.remoteStream!.toURL()}
+                style={styles.mainVideo}
+                objectFit="cover"
+              />
+            )}
+
+        {/* Screen Share Video */}
+        {state.screenSharingUser && state.screenStream && (
+          <RTCView
+            streamURL={state.screenStream.toURL()}
+            style={styles.screenVideo}
+            objectFit="contain"
+          />
+        )}
+
+        {/* Screen Sharing Indicator */}
+        {state.screenSharingUser && !state.screenStream && (
+          <Animated.View style={styles.screenShareIndicator}>
+            <View style={styles.screenShareIcon}>
+              <Text style={styles.screenShareIconText}>🖥️</Text>
+            </View>
+            <Text style={styles.screenShareText}>
+              {state.screenSharingUser === socket?.id
+                ? 'You are sharing screen'
+                : 'Screen sharing active'}
+            </Text>
+          </Animated.View>
+        )}
+
+        {/* Loading State - when no video streams are available */}
+        {!hasAnyVideo && (
+          <View style={styles.loadingContainer}>
+            <View style={styles.loadingContent}>
+              <Text style={styles.loadingTitle}>Connecting...</Text>
+              <Text style={styles.loadingSubtitle}>
+                Waiting for video streams
+              </Text>
+              <View style={styles.loadingDots}>
+                <View style={[styles.loadingDot, styles.loadingDotActive]} />
+                <View style={styles.loadingDot} />
+                <View style={styles.loadingDot} />
+              </View>
+              <View style={styles.debugInfo}>
+                <Text style={styles.debugText}>
+                  Local Stream: {hasLocalVideo ? '✅' : '❌'}
+                </Text>
+                <Text style={styles.debugText}>
+                  Remote Stream: {hasRemoteVideo ? '✅' : '❌'}
+                </Text>
+                <Text style={styles.debugText}>
+                  Participants: {state.participants.length}
+                </Text>
+                <Text style={styles.debugText}>Room: {state.roomId}</Text>
+              </View>
+            </View>
+          </View>
+        )}
+
+        {/* Small Video Thumbnail */}
+        {hasAnyVideo && (
+          <TouchableOpacity
+            style={styles.smallVideoContainer}
+            onPress={toggleVideoView}
+            activeOpacity={0.8}>
+            {isLocalVideoLarge
+              ? // Show remote video as thumbnail
+                hasRemoteVideo && (
+                  <RTCView
+                    streamURL={state.remoteStream!.toURL()}
+                    style={styles.smallVideo}
+                    objectFit="cover"
+                  />
+                )
+              : // Show local video as thumbnail
+                hasLocalVideo && (
+                  <RTCView
+                    streamURL={state.localStream!.toURL()}
+                    style={styles.smallVideo}
+                    objectFit="cover"
+                  />
+                )}
+            <View style={styles.smallVideoOverlay}>
+              <View style={styles.smallVideoLabel}>
+                <Text style={styles.smallVideoLabelText}>
+                  {isLocalVideoLarge ? 'Remote' : 'You'}
+                </Text>
+              </View>
+              {!isLocalVideoLarge && state.isMuted && (
+                <View style={styles.muteIndicator}>
+                  <Text style={styles.muteIcon}>🔇</Text>
+                </View>
+              )}
+            </View>
+          </TouchableOpacity>
+        )}
+      </TouchableOpacity>
+
+      {/* Control Bar */}
+      <Animated.View
+        style={[
+          styles.controlBar,
+          {
+            opacity: fadeAnim,
+            transform: [
+              {
+                translateY: fadeAnim.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [100, 0],
+                }),
+              },
+            ],
+          },
+        ]}>
+        <TouchableOpacity
+          style={[
+            styles.controlButton,
+            state.isMuted && styles.controlButtonActive,
+          ]}
+          onPress={toggleMute}>
+          <View style={styles.controlButtonInner}>
+            <Text style={styles.controlButtonIcon}>
+              {state.isMuted ? '🔇' : '🎤'}
+            </Text>
+          </View>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[
+            styles.controlButton,
+            state.isCameraOff && styles.controlButtonActive,
+          ]}
+          onPress={toggleCamera}>
+          <View style={styles.controlButtonInner}>
+            <Text style={styles.controlButtonIcon}>
+              {state.isCameraOff ? '📷' : '📹'}
+            </Text>
+          </View>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.controlButton, styles.chatButton]}
+          onPress={() => setShowChat(!showChat)}>
+          <View style={styles.controlButtonInner}>
+            <Text style={styles.controlButtonIcon}>💬</Text>
+            {unreadCount > 0 && (
+              <View style={styles.messageBadge}>
+                <Text style={styles.messageBadgeText}>
+                  {unreadCount > 99 ? '99+' : unreadCount}
+                </Text>
+              </View>
+            )}
+          </View>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[
+            styles.controlButton,
+            state.isScreenSharing && styles.controlButtonActive,
+          ]}
+          onPress={
+            state.isScreenSharing ? stopScreenSharing : startScreenSharing
+          }>
+          <View style={styles.controlButtonInner}>
+            <Text style={styles.controlButtonIcon}>
+              {state.isScreenSharing ? '🖥️' : '📺'}
+            </Text>
+          </View>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.controlButton, styles.detailsButton]}
+          onPress={() => setShowDetails(true)}>
+          <View style={styles.controlButtonInner}>
+            <Text style={styles.controlButtonIcon}>ℹ️</Text>
+          </View>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.controlButton, styles.endCallButton]}
+          onPress={handleEndCall}>
+          <View style={styles.controlButtonInner}>
+            <Text style={styles.controlButtonIcon}>📞</Text>
+          </View>
+        </TouchableOpacity>
+      </Animated.View>
+
+      {/* Details Modal */}
+      <Modal
+        visible={showDetails}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowDetails(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.detailsContainer}>
+            <View style={styles.modalHeader}>
+              <TouchableOpacity
+                style={styles.closeButton}
+                onPress={() => setShowDetails(false)}>
+                <Text style={styles.closeButtonText}>×</Text>
+              </TouchableOpacity>
+              <Text style={styles.modalTitle}>Call Details</Text>
+              <View style={styles.modalHeaderRight} />
+            </View>
+
+            <View style={styles.detailsContent}>
+              <View style={styles.detailSection}>
+                <Text style={styles.detailSectionTitle}>Room Information</Text>
+                <View style={styles.detailItem}>
+                  <Text style={styles.detailLabel}>Room ID:</Text>
+                  <Text style={styles.detailValue}>{state.roomId}</Text>
+                </View>
+                <View style={styles.detailItem}>
+                  <Text style={styles.detailLabel}>Participants:</Text>
+                  <Text style={styles.detailValue}>
+                    {state.participants.length}
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.detailSection}>
+                <Text style={styles.detailSectionTitle}>Participants</Text>
+                {state.participants.map((participant, index) => (
+                  <View
+                    key={participant.userId}
+                    style={styles.participantDetail}>
+                    <View style={styles.participantAvatar}>
+                      <Text style={styles.participantAvatarText}>
+                        {participant.username.charAt(0).toUpperCase()}
+                      </Text>
+                    </View>
+                    <View style={styles.participantInfo}>
+                      <Text style={styles.participantName}>
+                        {participant.username}
+                      </Text>
+                      {participant.isCreator && (
+                        <Text style={styles.creatorBadge}>Creator</Text>
+                      )}
+                    </View>
+                  </View>
+                ))}
+              </View>
+
+              <View style={styles.detailSection}>
+                <Text style={styles.detailSectionTitle}>Call Status</Text>
+                <View style={styles.detailItem}>
+                  <Text style={styles.detailLabel}>Microphone:</Text>
+                  <Text style={styles.detailValue}>
+                    {state.isMuted ? 'Muted' : 'Active'}
+                  </Text>
+                </View>
+                <View style={styles.detailItem}>
+                  <Text style={styles.detailLabel}>Camera:</Text>
+                  <Text style={styles.detailValue}>
+                    {state.isCameraOff ? 'Off' : 'On'}
+                  </Text>
+                </View>
+                <View style={styles.detailItem}>
+                  <Text style={styles.detailLabel}>Screen Sharing:</Text>
+                  <Text style={styles.detailValue}>
+                    {state.isScreenSharing ? 'Active' : 'Inactive'}
+                  </Text>
+                </View>
+                <View style={styles.detailItem}>
+                  <Text style={styles.detailLabel}>Local Stream:</Text>
+                  <Text style={styles.detailValue}>
+                    {hasLocalVideo ? 'Connected' : 'Not Available'}
+                  </Text>
+                </View>
+                <View style={styles.detailItem}>
+                  <Text style={styles.detailLabel}>Remote Stream:</Text>
+                  <Text style={styles.detailValue}>
+                    {hasRemoteVideo ? 'Connected' : 'Not Available'}
+                  </Text>
+                </View>
+              </View>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Chat Modal */}
+      <Modal
+        visible={showChat}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowChat(false)}>
+        <View style={styles.chatModal}>
+          <View style={styles.chatContainer}>
+            <View style={styles.chatHeader}>
+              <TouchableOpacity
+                style={styles.backButton}
+                onPress={() => setShowChat(false)}>
+                <Text style={styles.backButtonText}>←</Text>
+              </TouchableOpacity>
+              <Text style={styles.chatTitle}>Chat</Text>
+              <View style={styles.chatHeaderRight} />
+            </View>
+
+            <FlatList
+              data={state.messages}
+              renderItem={renderChatMessage}
+              keyExtractor={item => item.id}
+              style={styles.chatMessages}
+              showsVerticalScrollIndicator={false}
+            />
+
+            <KeyboardAvoidingView
+              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+              style={styles.chatInputContainer}>
+              <View style={styles.inputWrapper}>
+                <TextInput
+                  style={styles.chatInput}
+                  value={chatMessage}
+                  onChangeText={setChatMessage}
+                  placeholder="Type a message..."
+                  placeholderTextColor="#8E8E93"
+                  multiline
+                  maxLength={500}
+                />
+                <TouchableOpacity
+                  style={[
+                    styles.sendButton,
+                    !chatMessage.trim() && styles.sendButtonDisabled,
+                  ]}
+                  onPress={handleSendMessage}
+                  disabled={!chatMessage.trim()}>
+                  <Text style={styles.sendButtonText}>Send</Text>
+                </TouchableOpacity>
+              </View>
+            </KeyboardAvoidingView>
+          </View>
+        </View>
+      </Modal>
+    </SafeAreaView>
+  );
+};
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#000000',
+  },
+  videoContainer: {
+    flex: 1,
+    position: 'relative',
+  },
+  mainVideo: {
+    width: '100%',
+    height: '100%',
+  },
+  screenVideo: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 10,
+  },
+  loadingContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+  },
+  loadingContent: {
+    alignItems: 'center',
+    padding: 20,
+  },
+  loadingTitle: {
+    color: '#ffffff',
+    fontSize: 24,
+    fontWeight: 'bold',
+    marginBottom: 8,
+  },
+  loadingSubtitle: {
+    color: '#cccccc',
+    fontSize: 16,
+    marginBottom: 20,
+  },
+  loadingDots: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 30,
+  },
+  loadingDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+    marginHorizontal: 4,
+  },
+  loadingDotActive: {
+    backgroundColor: '#00CED1',
+    shadowColor: '#00CED1',
+    shadowOffset: {width: 0, height: 0},
+    shadowOpacity: 0.8,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  debugInfo: {
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    padding: 16,
+    borderRadius: 12,
+    marginTop: 20,
+  },
+  debugText: {
+    color: '#ffffff',
+    fontSize: 14,
+    marginBottom: 4,
+  },
+  smallVideoContainer: {
+    position: 'absolute',
+    top: 60,
+    right: 20,
+    width: 100,
+    height: 150,
+    borderRadius: 16,
+    overflow: 'hidden',
+    borderWidth: 3,
+    borderColor: '#ffffff',
+    shadowColor: '#000',
+    shadowOffset: {width: 0, height: 4},
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  smallVideo: {
+    width: '100%',
+    height: '100%',
+  },
+  smallVideoOverlay: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    padding: 8,
+  },
+  smallVideoLabel: {
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    alignSelf: 'flex-end',
+  },
+  smallVideoLabelText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  muteIndicator: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    backgroundColor: 'rgba(255, 0, 0, 0.8)',
+    borderRadius: 12,
+    width: 24,
+    height: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  muteIcon: {
+    fontSize: 12,
+  },
+  connectionContainer: {
+    position: 'absolute',
+    top: '50%',
+    left: '50%',
+    transform: [{translateX: -50}, {translateY: -50}],
+  },
+  connectionIndicator: {
+    alignItems: 'center',
+  },
+  connectionDots: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  connectionDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+    marginHorizontal: 4,
+  },
+  connectionDotActive: {
+    backgroundColor: '#00CED1',
+    shadowColor: '#00CED1',
+    shadowOffset: {width: 0, height: 0},
+    shadowOpacity: 0.8,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  connectionLine: {
+    width: 60,
+    height: 2,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    borderRadius: 1,
+  },
+  screenShareIndicator: {
+    position: 'absolute',
+    top: 60,
+    left: 20,
+    backgroundColor: 'rgba(255, 165, 0, 0.9)',
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    shadowColor: '#FFA500',
+    shadowOffset: {width: 0, height: 2},
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  screenShareIcon: {
+    marginRight: 8,
+  },
+  screenShareIconText: {
+    fontSize: 16,
+  },
+  screenShareText: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  controlBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    alignItems: 'center',
+    paddingVertical: 30,
+    paddingHorizontal: 20,
+    backgroundColor: 'rgba(0, 0, 0, 0.9)',
+    borderTopLeftRadius: 25,
+    borderTopRightRadius: 25,
+    shadowColor: '#000',
+    shadowOffset: {width: 0, height: -4},
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  controlButton: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: {width: 0, height: 2},
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  controlButtonInner: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 25,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  controlButtonActive: {
+    backgroundColor: '#FF5722',
+  },
+  controlButtonIcon: {
+    fontSize: 20,
+  },
+  chatButton: {
+    backgroundColor: '#007AFF',
+  },
+  detailsButton: {
+    backgroundColor: '#34C759',
+  },
+  endCallButton: {
+    backgroundColor: '#FF3B30',
+  },
+  messageBadge: {
+    position: 'absolute',
+    top: -8,
+    right: -8,
+    backgroundColor: '#FF3B30',
+    borderRadius: 12,
+    minWidth: 24,
+    height: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1,
+    shadowColor: '#000',
+    shadowOffset: {width: 0, height: 1},
+    shadowOpacity: 0.3,
+    shadowRadius: 2,
+    elevation: 3,
+  },
+  messageBadgeText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  detailsContainer: {
+    backgroundColor: '#1C1C1E',
+    width: width * 0.9,
+    maxHeight: height * 0.8,
+    borderRadius: 25,
+    shadowColor: '#000',
+    shadowOffset: {width: 0, height: -4},
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#2C2C2E',
+  },
+  closeButton: {
+    padding: 8,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  closeButtonText: {
+    color: '#FF3B30',
+    fontSize: 24,
+    fontWeight: 'bold',
+  },
+  modalTitle: {
+    color: '#ffffff',
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  modalHeaderRight: {
+    width: 40,
+  },
+  detailsContent: {
+    padding: 20,
+  },
+  detailSection: {
+    marginBottom: 24,
+  },
+  detailSectionTitle: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 12,
+  },
+  detailItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#2C2C2E',
+  },
+  detailLabel: {
+    color: '#cccccc',
+    fontSize: 14,
+  },
+  detailValue: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  participantDetail: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  participantAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#007AFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  participantAvatarText: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  participantInfo: {
+    flex: 1,
+  },
+  participantName: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  creatorBadge: {
+    color: '#FFD700',
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 2,
+  },
+  chatModal: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  chatContainer: {
+    backgroundColor: '#1C1C1E',
+    height: height * 0.7,
+    borderTopLeftRadius: 25,
+    borderTopRightRadius: 25,
+    shadowColor: '#000',
+    shadowOffset: {width: 0, height: -4},
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  chatHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#2C2C2E',
+  },
+  backButton: {
+    padding: 8,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  backButtonText: {
+    color: '#007AFF',
+    fontSize: 24,
+    fontWeight: 'bold',
+  },
+  chatTitle: {
+    color: '#ffffff',
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  chatHeaderRight: {
+    width: 40,
+  },
+  chatMessages: {
+    flex: 1,
+    paddingHorizontal: 20,
+  },
+  chatMessage: {
+    marginVertical: 8,
+    padding: 16,
+    borderRadius: 20,
+    maxWidth: '80%',
+    shadowColor: '#000',
+    shadowOffset: {width: 0, height: 1},
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  ownMessage: {
+    backgroundColor: '#007AFF',
+    alignSelf: 'flex-end',
+    borderBottomRightRadius: 4,
+  },
+  otherMessage: {
+    backgroundColor: '#2C2C2E',
+    alignSelf: 'flex-start',
+    borderBottomLeftRadius: 4,
+  },
+  messageUsername: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '600',
+    marginBottom: 4,
+    opacity: 0.8,
+  },
+  messageText: {
+    color: '#ffffff',
+    fontSize: 16,
+    lineHeight: 20,
+  },
+  messageTime: {
+    color: '#cccccc',
+    fontSize: 11,
+    marginTop: 4,
+    opacity: 0.7,
+  },
+  chatInputContainer: {
+    padding: 20,
+    borderTopWidth: 1,
+    borderTopColor: '#2C2C2E',
+    backgroundColor: '#1C1C1E',
+  },
+  inputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    backgroundColor: '#2C2C2E',
+    borderRadius: 25,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  chatInput: {
+    flex: 1,
+    color: '#ffffff',
+    fontSize: 16,
+    marginRight: 10,
+    maxHeight: 100,
+    paddingVertical: 8,
+  },
+  sendButton: {
+    backgroundColor: '#007AFF',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 20,
+    justifyContent: 'center',
+    shadowColor: '#007AFF',
+    shadowOffset: {width: 0, height: 2},
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  sendButtonDisabled: {
+    backgroundColor: '#8E8E93',
+    shadowOpacity: 0,
+  },
+  sendButtonText: {
+    color: '#ffffff',
+    fontWeight: '600',
+    fontSize: 14,
+  },
+});
+
+export default CallScreen;
