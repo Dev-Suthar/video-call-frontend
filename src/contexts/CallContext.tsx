@@ -13,6 +13,7 @@ import {
   mediaDevices,
   MediaStream,
 } from 'react-native-webrtc';
+import {CONFIG} from '../config/config';
 
 interface CallState {
   isConnected: boolean;
@@ -189,20 +190,21 @@ export const CallProvider: React.FC<CallProviderProps> = ({children}) => {
   // Initialize socket connection with improved error handling
   useEffect(() => {
     const connectSocket = () => {
-      // Use cloud server URL
-      const socketUrl = 'https://video-call-backend-uifd.onrender.com';
+      // Use configuration for socket server URL
+      const socketUrl = CONFIG.getSocketUrl();
 
+      console.log('🔌 CONFIG socket URL:', socketUrl);
       console.log('🔌 Connecting to socket server:', socketUrl);
       dispatch({type: 'SET_CONNECTION_STATUS', payload: 'connecting'});
 
       const newSocket = io(socketUrl, {
         transports: ['websocket', 'polling'],
-        timeout: 20000,
+        timeout: CONFIG.SOCKET_TIMEOUT,
         forceNew: true,
         reconnection: true,
-        reconnectionAttempts: maxReconnectAttempts,
-        reconnectionDelay: 1000,
-        reconnectionDelayMax: 5000,
+        reconnectionAttempts: CONFIG.SOCKET_RECONNECTION_ATTEMPTS,
+        reconnectionDelay: CONFIG.SOCKET_RECONNECTION_DELAY,
+        reconnectionDelayMax: CONFIG.SOCKET_RECONNECTION_DELAY_MAX,
       });
 
       newSocket.on('connect', () => {
@@ -277,7 +279,7 @@ export const CallProvider: React.FC<CallProviderProps> = ({children}) => {
         dispatch({type: 'SET_CONNECTION_STATUS', payload: 'error'});
       });
 
-      newSocket.on('user-joined', data => {
+      newSocket.on('user-joined', (data: any) => {
         console.log('User joined:', data, 'Current user:', newSocket.id);
         console.log('Current state:', {
           isInCall: stateRef.current.isInCall,
@@ -319,7 +321,7 @@ export const CallProvider: React.FC<CallProviderProps> = ({children}) => {
         console.log('Room state received:', {
           users: data.users.length,
           isCreator: data.isCreator,
-          usersList: data.users.map(u => ({
+          usersList: data.users.map((u: any) => ({
             id: u.userId,
             name: u.username,
             isCreator: u.isCreator,
@@ -500,11 +502,17 @@ export const CallProvider: React.FC<CallProviderProps> = ({children}) => {
         dispatch({type: 'SET_IN_CALL', payload: true});
 
         // Create peer connection after getting media stream
+        const stunServers = CONFIG.WEBRTC_STUN_SERVERS
+          ? CONFIG.WEBRTC_STUN_SERVERS.split(',').map((url: string) => ({
+              urls: url.trim(),
+            }))
+          : [
+              {urls: 'stun:stun.l.google.com:19302'},
+              {urls: 'stun:stun1.l.google.com:19302'},
+            ];
+
         const pc = new RTCPeerConnection({
-          iceServers: [
-            {urls: 'stun:stun.l.google.com:19302'},
-            {urls: 'stun:stun1.l.google.com:19302'},
-          ],
+          iceServers: stunServers,
         });
         console.log('Peer connection created');
 
@@ -702,7 +710,7 @@ export const CallProvider: React.FC<CallProviderProps> = ({children}) => {
 
     if (peerConnectionRef.current && stateRef.current.localStream) {
       try {
-        const offer = await peerConnectionRef.current.createOffer({});
+        const offer = await peerConnectionRef.current.createOffer();
         console.log('Offer created successfully');
         await peerConnectionRef.current.setLocalDescription(offer);
         console.log('Local description set');
@@ -744,7 +752,7 @@ export const CallProvider: React.FC<CallProviderProps> = ({children}) => {
       try {
         await peerConnectionRef.current.setRemoteDescription(offer);
         console.log('Remote description set');
-        const answer = await peerConnectionRef.current.createAnswer({});
+        const answer = await peerConnectionRef.current.createAnswer();
         console.log('Answer created successfully');
         await peerConnectionRef.current.setLocalDescription(answer);
         console.log('Local description set for answer');

@@ -1,0 +1,26 @@
+declare module '@env' {
+  export const SOCKET_SERVER_URL: string;
+  export const WEBRTC_STUN_SERVERS: string;
+  export const TURN_SERVER_URL: string;
+  export const TURN_USERNAME: string;
+  export const TURN_CREDENTIAL: string;
+  export const APP_NAME: string;
+  export const APP_VERSION: string;
+  export const ENVIRONMENT: string;
+  export const DEBUG: string;
+  export const LOG_LEVEL: string;
+  export const DEFAULT_VIDEO_WIDTH: string;
+  export const DEFAULT_VIDEO_HEIGHT: string;
+  export const DEFAULT_VIDEO_FRAME_RATE: string;
+  export const DEFAULT_SCREEN_WIDTH: string;
+  export const DEFAULT_SCREEN_HEIGHT: string;
+  export const SOCKET_TIMEOUT: string;
+  export const SOCKET_RECONNECTION_ATTEMPTS: string;
+  export const SOCKET_RECONNECTION_DELAY: string;
+  export const SOCKET_RECONNECTION_DELAY_MAX: string;
+  export const ENABLE_SCREEN_SHARING: string;
+  export const ENABLE_CHAT: string;
+  export const ENABLE_PARTICIPANT_LIST: string;
+  export const ENABLE_COMPRESSION: string;
+  export const ENABLE_OPTIMIZATION: string;
+}

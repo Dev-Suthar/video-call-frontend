@@ -5,14 +5,19 @@ import {
   mediaDevices,
   MediaStream,
 } from 'react-native-webrtc';
+import {CONFIG} from '../config/config';
 
 export const createPeerConnection = (): RTCPeerConnection => {
+  const stunServers = CONFIG.WEBRTC_STUN_SERVERS
+    ? CONFIG.WEBRTC_STUN_SERVERS.split(',').map((url: string) => ({urls: url.trim()}))
+    : [
+        {urls: 'stun:stun.l.google.com:19302'},
+        {urls: 'stun:stun1.l.google.com:19302'},
+        {urls: 'stun:stun2.l.google.com:19302'},
+      ];
+
   return new RTCPeerConnection({
-    iceServers: [
-      {urls: 'stun:stun.l.google.com:19302'},
-      {urls: 'stun:stun1.l.google.com:19302'},
-      {urls: 'stun:stun2.l.google.com:19302'},
-    ],
+    iceServers: stunServers,
     iceCandidatePoolSize: 10,
   });
 };
