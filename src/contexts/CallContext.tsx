@@ -630,19 +630,15 @@ export const CallProvider: React.FC<CallProviderProps> = ({children}) => {
         dispatch({type: 'SET_IN_CALL', payload: true});
 
         // Create peer connection after getting media stream
-        const stunServers = CONFIG.WEBRTC_STUN_SERVERS
-          ? CONFIG.WEBRTC_STUN_SERVERS.split(',').map((url: string) => ({
-              urls: url.trim(),
-            }))
-          : [
-              {urls: 'stun:stun.l.google.com:19302'},
-              {urls: 'stun:stun1.l.google.com:19302'},
-            ];
+        const iceServers = [
+          {urls: 'stun:stun.l.google.com:19302'},
+          {urls: 'stun:stun1.l.google.com:19302'},
+        ];
 
         const pc = new RTCPeerConnection({
-          iceServers: stunServers,
+          iceServers: iceServers,
         });
-        console.log('Peer connection created');
+        console.log('Peer connection created with ICE servers:', iceServers);
 
         // Add local stream tracks to peer connection
         stream.getTracks().forEach(track => {

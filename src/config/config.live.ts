@@ -6,7 +6,8 @@ export const CONFIG = {
     return 'https://video-call-backend-uifd.onrender.com';
   },
   WEBRTC_STUN_SERVERS:
-    'stun:stun.l.google.com:19302,stun:stun1.l.google.com:19302,stun:stun2.l.google.com:19302',
+    'stun:stun.l.google.com:19302,stun:stun1.l.google.com:19302',
+  WEBRTC_TURN_SERVERS: '',
   SOCKET_TIMEOUT: 20000,
   SOCKET_RECONNECTION_ATTEMPTS: 5,
   SOCKET_RECONNECTION_DELAY: 1000,

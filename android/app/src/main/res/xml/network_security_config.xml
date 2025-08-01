@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">localhost</domain>
+        <domain includeSubdomains="true">10.0.2.2</domain>
+        <domain includeSubdomains="true">10.0.3.2</domain>
+        <domain includeSubdomains="true">video-call-backend-uifd.onrender.com</domain>
+        <domain includeSubdomains="true">stun.l.google.com</domain>
+        <domain includeSubdomains="true">stun1.l.google.com</domain>
+        <domain includeSubdomains="true">stun2.l.google.com</domain>
+        <domain includeSubdomains="true">stun3.l.google.com</domain>
+        <domain includeSubdomains="true">stun4.l.google.com</domain>
+    </domain-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system"/>
+        </trust-anchors>
+    </base-config>
+</network-security-config> 

@@ -33,6 +33,9 @@ const CallScreen = () => {
   const [chatMessage, setChatMessage] = useState('');
   const [isControlsVisible, setIsControlsVisible] = useState(true);
   const [isLocalVideoLarge, setIsLocalVideoLarge] = useState(false);
+  const [isVideoSwitching, setIsVideoSwitching] = useState(false);
+  const [isStreamsReady, setIsStreamsReady] = useState(false);
+  const [forceVideoUpdate, setForceVideoUpdate] = useState(0);
   const navigation = useNavigation();
   const {
     state,
@@ -64,10 +67,35 @@ const CallScreen = () => {
   useEffect(() => {
     console.log('CallScreen: isInCall changed to:', state.isInCall);
     if (!state.isInCall) {
-      console.log('CallScreen: Navigating back due to isInCall = false');
-      navigation.goBack();
+      console.log(
+        'CallScreen: Navigating to HomeScreen due to isInCall = false',
+      );
+      navigation.navigate('Home' as never);
     }
   }, [state.isInCall, navigation]);
+
+  // Effect to force video update when streams become available
+  useEffect(() => {
+    if (state.localStream && state.localStream.getTracks().length > 0) {
+      // Add a small delay to ensure the stream is fully initialized
+      const timer = setTimeout(() => {
+        setForceVideoUpdate(prev => prev + 1);
+        console.log('Forcing video update - local stream ready');
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [state.localStream]);
+
+  // Additional effect to handle initial stream setup
+  useEffect(() => {
+    if (state.isInCall && state.localStream) {
+      // Force update immediately when entering call with local stream
+      setForceVideoUpdate(prev => prev + 1);
+      console.log(
+        'Forcing initial video update - entering call with local stream',
+      );
+    }
+  }, [state.isInCall, state.localStream]);
 
   // Debug effect to monitor stream changes
   useEffect(() => {
@@ -77,6 +105,24 @@ const CallScreen = () => {
       localStreamTracks: state.localStream?.getTracks().length || 0,
       remoteStreamTracks: state.remoteStream?.getTracks().length || 0,
     });
+
+    // Check if streams are ready
+    const localStreamReady =
+      !!state.localStream && state.localStream.getTracks().length > 0;
+    const remoteStreamReady =
+      !!state.remoteStream && state.remoteStream.getTracks().length > 0;
+
+    // Set streams ready if we have local stream (for small thumbnail) or any stream
+    if (localStreamReady || remoteStreamReady) {
+      setIsStreamsReady(true);
+    }
+
+    // Also set ready if we're in call and have local stream (for immediate display)
+    if (state.isInCall && localStreamReady) {
+      setIsStreamsReady(true);
+      // Force video update when streams become available
+      setForceVideoUpdate(prev => prev + 1);
+    }
   }, [state.localStream, state.remoteStream]);
 
   // Auto-hide controls after 3 seconds
@@ -114,7 +160,7 @@ const CallScreen = () => {
         onPress: () => {
           hapticError();
           leaveRoom();
-          navigation.goBack();
+          navigation.navigate('Home' as never);
         },
       },
     ]);
@@ -128,7 +174,12 @@ const CallScreen = () => {
   };
 
   const toggleVideoView = () => {
-    setIsLocalVideoLarge(!isLocalVideoLarge);
+    setIsVideoSwitching(true);
+    // Add a small delay to ensure smooth transition
+    setTimeout(() => {
+      setIsLocalVideoLarge(!isLocalVideoLarge);
+      setIsVideoSwitching(false);
+    }, 100);
   };
 
   const renderChatMessage = ({item}: {item: any}) => {
@@ -155,8 +206,10 @@ const CallScreen = () => {
 
   // Check if we have any video streams
   const hasAnyVideo = state.localStream || state.remoteStream;
-  const hasLocalVideo = !!state.localStream;
-  const hasRemoteVideo = !!state.remoteStream;
+  const hasLocalVideo =
+    !!state.localStream && state.localStream.getTracks().length > 0;
+  const hasRemoteVideo =
+    !!state.remoteStream && state.remoteStream.getTracks().length > 0;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -168,23 +221,35 @@ const CallScreen = () => {
         activeOpacity={1}
         onPress={showControls}>
         {/* Large Video View */}
-        {isLocalVideoLarge
-          ? // Local video as main view
-            hasLocalVideo && (
-              <RTCView
-                streamURL={state.localStream!.toURL()}
-                style={styles.mainVideo}
-                objectFit="cover"
-              />
-            )
-          : // Remote video as main view
-            hasRemoteVideo && (
-              <RTCView
-                streamURL={state.remoteStream!.toURL()}
-                style={styles.mainVideo}
-                objectFit="cover"
-              />
-            )}
+        {isLocalVideoLarge ? (
+          // Local video as main view
+          hasLocalVideo && state.localStream ? (
+            <RTCView
+              key={`main-local-video-${forceVideoUpdate}`}
+              streamURL={state.localStream.toURL()}
+              style={styles.mainVideo}
+              objectFit="cover"
+              mirror={true}
+            />
+          ) : (
+            <View style={styles.mainVideoPlaceholder}>
+              <Text style={styles.mainVideoPlaceholderText}>Local Camera</Text>
+            </View>
+          )
+        ) : // Remote video as main view
+        hasRemoteVideo && state.remoteStream ? (
+          <RTCView
+            key={`main-remote-video-${forceVideoUpdate}`}
+            streamURL={state.remoteStream.toURL()}
+            style={styles.mainVideo}
+            objectFit="cover"
+            mirror={false}
+          />
+        ) : (
+          <View style={styles.mainVideoPlaceholder}>
+            <Text style={styles.mainVideoPlaceholderText}>Remote Camera</Text>
+          </View>
+        )}
 
         {/* Screen Share Video */}
         {state.screenSharingUser && state.screenStream && (
@@ -233,29 +298,57 @@ const CallScreen = () => {
         {/* Loading State - when no video streams are available */}
         {!hasAnyVideo && <LoadingSpinner />}
 
+        {/* Small Video Loading State */}
+        {hasAnyVideo && !isStreamsReady && (
+          <View style={styles.smallVideoContainer}>
+            <View style={styles.smallVideoPlaceholder}>
+              <LoadingSpinner />
+              <Text style={styles.smallVideoPlaceholderText}>
+                Initializing...
+              </Text>
+            </View>
+          </View>
+        )}
+
         {/* Small Video Thumbnail */}
         {hasAnyVideo && (
           <TouchableOpacity
-            style={styles.smallVideoContainer}
+            style={[
+              styles.smallVideoContainer,
+              isVideoSwitching && styles.smallVideoContainerSwitching,
+            ]}
             onPress={toggleVideoView}
-            activeOpacity={0.8}>
-            {isLocalVideoLarge
-              ? // Show remote video as thumbnail
-                hasRemoteVideo && (
-                  <RTCView
-                    streamURL={state.remoteStream!.toURL()}
-                    style={styles.smallVideo}
-                    objectFit="cover"
-                  />
-                )
-              : // Show local video as thumbnail
-                hasLocalVideo && (
-                  <RTCView
-                    streamURL={state.localStream!.toURL()}
-                    style={styles.smallVideo}
-                    objectFit="cover"
-                  />
-                )}
+            activeOpacity={0.8}
+            disabled={isVideoSwitching}>
+            {isLocalVideoLarge ? (
+              // Show remote video as thumbnail
+              hasRemoteVideo && state.remoteStream ? (
+                <RTCView
+                  key={`small-remote-video-${forceVideoUpdate}`}
+                  streamURL={state.remoteStream.toURL()}
+                  style={styles.smallVideo}
+                  objectFit="cover"
+                  mirror={false}
+                />
+              ) : (
+                <View style={styles.smallVideoPlaceholder}>
+                  <Text style={styles.smallVideoPlaceholderText}>Remote</Text>
+                </View>
+              )
+            ) : // Show local video as thumbnail
+            hasLocalVideo && state.localStream ? (
+              <RTCView
+                key={`small-local-video-${forceVideoUpdate}`}
+                streamURL={state.localStream.toURL()}
+                style={styles.smallVideo}
+                objectFit="cover"
+                mirror={true}
+              />
+            ) : (
+              <View style={styles.smallVideoPlaceholder}>
+                <Text style={styles.smallVideoPlaceholderText}>You</Text>
+              </View>
+            )}
             <View style={styles.smallVideoOverlay}>
               <View style={styles.smallVideoLabel}>
                 <Text style={styles.smallVideoLabelText}>
@@ -265,6 +358,13 @@ const CallScreen = () => {
               {!isLocalVideoLarge && state.isMuted && (
                 <View style={styles.muteIndicator}>
                   <Icon name="mic-off" size={12} color="#ffffff" />
+                </View>
+              )}
+              {isVideoSwitching && (
+                <View style={styles.switchingIndicator}>
+                  <Text style={styles.switchingIndicatorText}>
+                    Switching...
+                  </Text>
                 </View>
               )}
             </View>
@@ -467,7 +567,9 @@ const CallScreen = () => {
         animationType="slide"
         transparent={true}
         onRequestClose={() => setShowChat(false)}>
-        <View style={styles.chatModal}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.chatModal}>
           <View style={styles.chatContainer}>
             <View style={styles.chatHeader}>
               <TouchableOpacity
@@ -485,11 +587,10 @@ const CallScreen = () => {
               keyExtractor={item => item.id}
               style={styles.chatMessages}
               showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
             />
 
-            <KeyboardAvoidingView
-              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-              style={styles.chatInputContainer}>
+            <View style={styles.chatInputContainer}>
               <View style={styles.inputWrapper}>
                 <TextInput
                   style={styles.chatInput}
@@ -499,6 +600,8 @@ const CallScreen = () => {
                   placeholderTextColor="#8E8E93"
                   multiline
                   maxLength={500}
+                  returnKeyType="send"
+                  onSubmitEditing={handleSendMessage}
                 />
                 <TouchableOpacity
                   style={[
@@ -510,9 +613,9 @@ const CallScreen = () => {
                   <Text style={styles.sendButtonText}>Send</Text>
                 </TouchableOpacity>
               </View>
-            </KeyboardAvoidingView>
+            </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>
   );
@@ -530,6 +633,18 @@ const styles = StyleSheet.create({
   mainVideo: {
     width: '100%',
     height: '100%',
+  },
+  mainVideoPlaceholder: {
+    width: '100%',
+    height: '100%',
+    backgroundColor: '#000000',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  mainVideoPlaceholderText: {
+    color: '#ffffff',
+    fontSize: 18,
+    fontWeight: '600',
   },
   screenVideo: {
     position: 'absolute',
@@ -605,15 +720,49 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderWidth: 3,
     borderColor: '#ffffff',
+    backgroundColor: '#000000',
     shadowColor: '#000',
     shadowOffset: {width: 0, height: 4},
     shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 8,
   },
+  smallVideoContainerSwitching: {
+    borderColor: '#00CED1',
+    shadowColor: '#00CED1',
+    shadowOpacity: 0.5,
+  },
   smallVideo: {
     width: '100%',
     height: '100%',
+    backgroundColor: '#000000',
+  },
+  smallVideoPlaceholder: {
+    width: '100%',
+    height: '100%',
+    backgroundColor: '#1C1C1E',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  smallVideoPlaceholderText: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  switchingIndicator: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  switchingIndicatorText: {
+    color: '#00CED1',
+    fontSize: 12,
+    fontWeight: '600',
   },
   smallVideoOverlay: {
     position: 'absolute',
