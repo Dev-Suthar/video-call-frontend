@@ -1,17 +1,16 @@
-// Live environment configuration
+// Local environment configuration
 export const CONFIG = {
-  ENVIRONMENT: 'live',
+  ENVIRONMENT: 'local',
   getSocketUrl: () => {
-    console.log('🔧 CONFIG: Using LIVE environment');
-    return 'https://video-call-backend-uifd.onrender.com';
+    console.log('🔧 CONFIG: Using LOCAL environment');
+    return 'http://192.168.29.30:3000';
   },
   WEBRTC_STUN_SERVERS:
-    'stun:stun.l.google.com:19302,stun:stun1.l.google.com:19302',
-  WEBRTC_TURN_SERVERS: '',
+    'stun:stun.l.google.com:19302,stun:stun1.l.google.com:19302,stun:stun2.l.google.com:19302',
   SOCKET_TIMEOUT: 20000,
   SOCKET_RECONNECTION_ATTEMPTS: 5,
   SOCKET_RECONNECTION_DELAY: 1000,
   SOCKET_RECONNECTION_DELAY_MAX: 5000,
-  DEBUG: false,
-  LOG_LEVEL: 'info',
+  DEBUG: true,
+  LOG_LEVEL: 'debug',
 };
