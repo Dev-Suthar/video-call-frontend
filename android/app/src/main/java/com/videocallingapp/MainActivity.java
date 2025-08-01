@@ -37,6 +37,8 @@ public class MainActivity extends ReactActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        // WebRTC module is configured in MainApplication.java
+        // Screen sharing is supported by default with proper permissions
         super.onCreate(savedInstanceState);
     }
 }

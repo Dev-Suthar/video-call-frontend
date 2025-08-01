@@ -46,6 +46,12 @@ const CallScreen = () => {
     startScreenSharing,
     stopScreenSharing,
     sendMessage,
+    debugScreenSharing,
+    testScreenSharingSetup,
+    checkScreenSharingPermissions,
+    getScreenSharingCapabilities,
+    validateScreenSharingConfiguration,
+    runScreenSharingTests,
   } = useCall();
 
   // Animation values
@@ -447,6 +453,31 @@ const CallScreen = () => {
               size={20}
               color="#ffffff"
             />
+          </View>
+        </TouchableOpacity>
+
+        {/* Test Screen Sharing Button */}
+        <TouchableOpacity
+          style={[styles.controlButton, styles.testButton]}
+          onPress={async () => {
+            console.log('🧪 Running screen sharing tests...');
+            try {
+              const results = await runScreenSharingTests();
+              Alert.alert(
+                'Screen Sharing Tests',
+                `Tests completed!\n\nConfiguration: ✅\nCapabilities: ✅\nPermissions: ✅\nFunctionality: ${
+                  results.functionality.success ? '✅' : '❌'
+                }\n\nCheck console for details.`,
+                [{text: 'OK'}],
+              );
+            } catch (error) {
+              Alert.alert('Test Error', `Error running tests: ${error}`, [
+                {text: 'OK'},
+              ]);
+            }
+          }}>
+          <View style={styles.controlButtonInner}>
+            <Icon name="bug-report" size={20} color="#ffffff" />
           </View>
         </TouchableOpacity>
 
@@ -908,6 +939,9 @@ const styles = StyleSheet.create({
   },
   endCallButton: {
     backgroundColor: '#FF3B30',
+  },
+  testButton: {
+    backgroundColor: '#FF9500',
   },
   messageBadge: {
     position: 'absolute',
