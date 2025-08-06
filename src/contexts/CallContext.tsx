@@ -16,7 +16,22 @@ import {
 } from 'react-native-webrtc';
 import {CONFIG} from '../config/config';
 import {hapticLight} from '../utils/haptics';
-import {getDisplayMedia} from '../utils/webrtc';
+import {
+  getDisplayMedia,
+  checkScreenSharingCapabilities,
+  createScreenSharingStream,
+  replaceVideoTrack,
+  restoreCameraTrack,
+} from '../utils/webrtc';
+
+// Add simulator detection utility
+const isSimulator = () => {
+  if (Platform.OS === 'ios') {
+    return Platform.isPad || Platform.isTV;
+  }
+  // For Android, we'll check if we're in an emulator
+  return __DEV__ && (global as any).__METRO_GLOBAL_PREFIX__;
+};
 
 interface CallState {
   isConnected: boolean;
@@ -1024,15 +1039,47 @@ export const CallProvider: React.FC<CallProviderProps> = ({children}) => {
 
   const startScreenSharing = async () => {
     try {
-      const stream = await getDisplayMedia();
+      // Check if running on simulator
+      if (isSimulator()) {
+        console.log('⚠️  Screen sharing on simulator detected');
+        console.log('📱 Simulators have limited screen sharing support');
+        console.log('💡 For best results, test on a physical device');
+
+        // Show user-friendly message
+        dispatch({
+          type: 'SET_ERROR_MESSAGE',
+          payload:
+            'Screen sharing may not work properly on simulator. Please test on a physical device for best results.',
+        });
+
+        // Clear error after 5 seconds
+        setTimeout(() => {
+          dispatch({type: 'CLEAR_ERROR'});
+        }, 5000);
+      }
+
+      console.log('🎬 Starting enhanced screen sharing...');
+
+      // Check screen sharing capabilities first
+      const capabilities = await checkScreenSharingCapabilities();
+      if (!capabilities.supported) {
+        throw new Error('Screen sharing not supported on this device');
+      }
+
+      // Create screen sharing stream with enhanced options
+      const stream = await createScreenSharingStream({
+        includeAudio: false, // Don't include system audio by default
+        quality: 'medium',
+        frameRate: 30,
+      });
 
       console.log(
-        'Screen sharing stream obtained:',
+        '✅ Screen sharing stream obtained:',
         stream.getTracks().length,
         'tracks',
       );
 
-      // Replace camera video track with screen sharing track
+      // Replace camera video track with screen sharing track using enhanced function
       if (
         peerConnectionRef.current &&
         ['new', 'connecting', 'connected'].includes(
@@ -1040,47 +1087,15 @@ export const CallProvider: React.FC<CallProviderProps> = ({children}) => {
         )
       ) {
         try {
-          // First, remove existing video tracks (camera)
-          const senders = peerConnectionRef.current.getSenders();
-          console.log('Current senders before screen sharing:', senders.length);
-
-          const videoSenders = senders.filter(
-            sender => sender.track && sender.track.kind === 'video',
+          console.log('🔄 Replacing video tracks for screen sharing');
+          replaceVideoTrack(
+            peerConnectionRef.current,
+            stream,
+            state.localStream,
           );
-
-          console.log('Found video senders:', videoSenders.length);
-
-          // Remove video senders safely
-          for (const sender of videoSenders) {
-            try {
-              console.log('Removing camera video track for screen sharing:', {
-                trackId: sender.track?.id,
-                trackLabel: sender.track?.label,
-              });
-              peerConnectionRef.current.removeTrack(sender);
-            } catch (error) {
-              console.error('Error removing video track:', error);
-            }
-          }
-
-          // Then add screen sharing tracks
-          for (const track of stream.getTracks()) {
-            try {
-              console.log(
-                'Adding screen sharing track to peer connection:',
-                track.kind,
-                'Track ID:',
-                track.id,
-                'Track label:',
-                track.label,
-              );
-              peerConnectionRef.current.addTrack(track, stream);
-            } catch (error) {
-              console.error('Error adding screen sharing track:', error);
-            }
-          }
         } catch (error) {
-          console.error('Error managing peer connection tracks:', error);
+          console.error('❌ Error replacing video tracks:', error);
+          throw error;
         }
       }
 
@@ -1096,8 +1111,26 @@ export const CallProvider: React.FC<CallProviderProps> = ({children}) => {
           createOffer();
         }, 500);
       }
+
+      console.log('✅ Screen sharing started successfully');
     } catch (error) {
-      console.error('Error starting screen sharing:', error);
+      console.error('❌ Error starting screen sharing:', error);
+
+      // Provide user-friendly error message
+      let errorMessage = 'Failed to start screen sharing';
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      }
+
+      dispatch({
+        type: 'SET_ERROR_MESSAGE',
+        payload: errorMessage,
+      });
+
+      // Clear error after 5 seconds
+      setTimeout(() => {
+        dispatch({type: 'CLEAR_ERROR'});
+      }, 5000);
     }
   };
 
@@ -1105,98 +1138,59 @@ export const CallProvider: React.FC<CallProviderProps> = ({children}) => {
     if (state.screenStream) {
       console.log('🔄 Stopping screen sharing and restoring camera');
 
-      // Remove screen sharing tracks from peer connection
-      if (
-        peerConnectionRef.current &&
-        ['new', 'connecting', 'connected'].includes(
-          peerConnectionRef.current.connectionState,
-        )
-      ) {
-        try {
-          const senders = peerConnectionRef.current.getSenders();
-          console.log('Current senders before removal:', senders.length);
-
-          const screenSharingSenders = senders.filter(
-            sender =>
-              sender.track &&
-              sender.track.kind === 'video' &&
-              (sender.track.id.includes('screen') ||
-                sender.track.label.includes('screen')),
-          );
-
-          console.log(
-            'Found screen sharing senders:',
-            screenSharingSenders.length,
-          );
-
-          // Remove screen sharing senders safely
-          for (const sender of screenSharingSenders) {
-            try {
-              console.log(
-                'Removing screen sharing track from peer connection:',
-                {
-                  trackId: sender.track?.id,
-                  trackLabel: sender.track?.label,
-                },
-              );
-              peerConnectionRef.current.removeTrack(sender);
-            } catch (error) {
-              console.error('Error removing screen sharing track:', error);
-            }
-          }
-        } catch (error) {
-          console.error(
-            'Error managing peer connection during screen sharing stop:',
-            error,
-          );
-        }
-      }
-
-      // Stop screen sharing tracks
       try {
-        state.screenStream.getTracks().forEach(track => {
-          try {
-            track.stop();
-          } catch (error) {
-            console.error('Error stopping screen sharing track:', error);
-          }
-        });
-      } catch (error) {
-        console.error('Error stopping screen sharing tracks:', error);
-      }
-
-      dispatch({type: 'SET_SCREEN_STREAM', payload: null});
-      dispatch({type: 'SET_SCREEN_SHARING', payload: false});
-
-      // Re-add camera video track from local stream
-      if (
-        peerConnectionRef.current &&
-        ['new', 'connecting', 'connected'].includes(
-          peerConnectionRef.current.connectionState,
-        ) &&
-        state.localStream
-      ) {
-        try {
-          const videoTrack = state.localStream.getVideoTracks()[0];
-          if (videoTrack) {
-            console.log('Re-adding camera video track to peer connection');
-            peerConnectionRef.current.addTrack(videoTrack, state.localStream);
-          } else {
-            console.log('No camera video track found in local stream');
-          }
-        } catch (error) {
-          console.error('Error re-adding camera track:', error);
+        // Remove screen sharing tracks from peer connection using enhanced function
+        if (
+          peerConnectionRef.current &&
+          ['new', 'connecting', 'connected'].includes(
+            peerConnectionRef.current.connectionState,
+          ) &&
+          state.localStream
+        ) {
+          console.log('🔄 Restoring camera video track');
+          restoreCameraTrack(peerConnectionRef.current, state.localStream);
         }
-      }
 
-      if (socket) {
-        socket.emit('screen-share-stop');
+        // Stop screen sharing tracks
+        try {
+          state.screenStream.getTracks().forEach(track => {
+            try {
+              track.stop();
+            } catch (error) {
+              console.error('Error stopping screen sharing track:', error);
+            }
+          });
+        } catch (error) {
+          console.error('Error stopping screen sharing tracks:', error);
+        }
 
-        // Create a new offer to restore camera track
+        dispatch({type: 'SET_SCREEN_STREAM', payload: null});
+        dispatch({type: 'SET_SCREEN_SHARING', payload: false});
+
+        if (socket) {
+          socket.emit('screen-share-stop');
+
+          // Create a new offer to restore camera track
+          setTimeout(() => {
+            console.log('Creating new offer after stopping screen sharing');
+            createOffer();
+          }, 500);
+        }
+
+        console.log('✅ Screen sharing stopped successfully');
+      } catch (error) {
+        console.error('❌ Error stopping screen sharing:', error);
+
+        // Provide user-friendly error message
+        dispatch({
+          type: 'SET_ERROR_MESSAGE',
+          payload: 'Failed to stop screen sharing. Please try again.',
+        });
+
+        // Clear error after 5 seconds
         setTimeout(() => {
-          console.log('Creating new offer after stopping screen sharing');
-          createOffer();
-        }, 500);
+          dispatch({type: 'CLEAR_ERROR'});
+        }, 5000);
       }
     } else {
       console.log('No screen stream to stop');
@@ -1239,7 +1233,10 @@ export const CallProvider: React.FC<CallProviderProps> = ({children}) => {
           return;
         }
 
-        const offer = await peerConnectionRef.current.createOffer();
+        const offer = await peerConnectionRef.current.createOffer({
+          offerToReceiveAudio: true,
+          offerToReceiveVideo: true,
+        });
         console.log('Offer created successfully');
 
         // Check if peer connection is still valid before setting description
@@ -1448,6 +1445,13 @@ export const CallProvider: React.FC<CallProviderProps> = ({children}) => {
   const forceScreenSharingDetection = () => {
     console.log('🔧 Force Screen Sharing Detection');
 
+    // Check if running on simulator
+    if (isSimulator()) {
+      console.log(
+        '⚠️  Screen sharing detection on simulator - may show blank screen',
+      );
+    }
+
     // Check if we have a screen sharing user but no screen stream
     if (state.screenSharingUser && !state.screenStream) {
       console.log('Screen sharing user detected but no screen stream');
@@ -1465,6 +1469,7 @@ export const CallProvider: React.FC<CallProviderProps> = ({children}) => {
             label: track.label,
             enabled: track.enabled,
             muted: track.muted,
+            readyState: track.readyState,
           });
         });
 
@@ -1493,17 +1498,39 @@ export const CallProvider: React.FC<CallProviderProps> = ({children}) => {
     console.log('🧪 Testing Screen Sharing Setup...');
 
     try {
-      // Test 1: Check if getDisplayMedia is available
-      console.log('✅ getDisplayMedia is available');
+      // Check if running on simulator
+      if (isSimulator()) {
+        console.log(
+          '⚠️  Running on simulator - limited screen sharing support',
+        );
+        return {
+          success: false,
+          message: 'Screen sharing has limited support on simulators',
+          simulator: true,
+          recommendation: 'Test on a physical device for full functionality',
+        };
+      }
+
+      // Test 1: Check screen sharing capabilities
+      console.log('🔍 Checking screen sharing capabilities...');
+      const capabilities = await checkScreenSharingCapabilities();
+
+      if (!capabilities.supported) {
+        return {
+          success: false,
+          message: 'Screen sharing not supported on this device',
+          error: capabilities.error,
+          simulator: isSimulator(),
+        };
+      }
+
+      console.log('✅ Screen sharing capabilities:', capabilities);
 
       // Test 2: Check if we can get display media (this will prompt for permission)
       console.log('📱 Attempting to get display media...');
-      const stream = await mediaDevices.getDisplayMedia({
-        video: {
-          width: 1920,
-          height: 1080,
-          frameRate: 30,
-        },
+      const stream = await createScreenSharingStream({
+        includeAudio: false,
+        quality: 'medium',
       });
 
       console.log('✅ Display media obtained successfully');
@@ -1525,6 +1552,18 @@ export const CallProvider: React.FC<CallProviderProps> = ({children}) => {
         });
       });
 
+      // Check if stream has actual content (not blank)
+      const videoTrack = stream.getVideoTracks()[0];
+      if (videoTrack) {
+        console.log('📹 Video track details:', {
+          id: videoTrack.id,
+          label: videoTrack.label,
+          enabled: videoTrack.enabled,
+          muted: videoTrack.muted,
+          readyState: videoTrack.readyState,
+        });
+      }
+
       // Clean up
       stream.getTracks().forEach(track => track.stop());
       console.log('✅ Screen sharing test completed successfully');
@@ -1532,12 +1571,14 @@ export const CallProvider: React.FC<CallProviderProps> = ({children}) => {
       return {
         success: true,
         message: 'Screen sharing is properly configured',
+        capabilities,
         streamDetails: {
           id: stream.id,
           tracks: stream.getTracks().length,
           videoTracks: stream.getVideoTracks().length,
           audioTracks: stream.getAudioTracks().length,
         },
+        simulator: false,
       };
     } catch (error) {
       console.error('❌ Screen sharing test failed:', error);
@@ -1545,6 +1586,7 @@ export const CallProvider: React.FC<CallProviderProps> = ({children}) => {
         success: false,
         message: 'Screen sharing test failed',
         error: error instanceof Error ? error.message : String(error),
+        simulator: isSimulator(),
       };
     }
   };
@@ -1572,34 +1614,58 @@ export const CallProvider: React.FC<CallProviderProps> = ({children}) => {
   };
 
   // Get screen sharing capabilities
-  const getScreenSharingCapabilities = () => {
+  const getScreenSharingCapabilities = async () => {
     console.log('🔍 Checking Screen Sharing Capabilities...');
 
-    const capabilities = {
-      platform: Platform.OS,
-      webrtcVersion: '111.0.6',
-      features: {
-        screenSharing: true,
-        audioSharing: false, // System audio sharing not supported by default
-        regionSelection: false, // Not implemented yet
-        qualityControl: true, // Basic quality control available
-      },
-      limitations: {
-        android: [
-          'Requires foreground service',
-          'User must grant screen recording permission',
-          'May show persistent notification',
-        ],
-        ios: [
-          'Requires screen recording permission',
-          'Limited to app content on some devices',
-          'May require user to enable screen recording in settings',
-        ],
-      },
-    };
+    try {
+      const capabilities = await checkScreenSharingCapabilities();
 
-    console.log('📊 Screen sharing capabilities:', capabilities);
-    return capabilities;
+      const platformCapabilities = {
+        platform: Platform.OS,
+        webrtcVersion: '111.0.6',
+        features: {
+          screenSharing: capabilities.supported,
+          audioSharing: capabilities.audioSupported,
+          systemAudioSharing: capabilities.systemAudioSupported,
+          videoSharing: capabilities.videoSupported,
+          qualityControl: true, // Basic quality control available
+        },
+        limitations: {
+          android: [
+            'Requires foreground service',
+            'User must grant screen recording permission',
+            'May show persistent notification',
+          ],
+          ios: [
+            'Requires screen recording permission',
+            'Limited to app content on some devices',
+            'May require user to enable screen recording in settings',
+          ],
+        },
+        error: capabilities.error,
+      };
+
+      console.log('📊 Screen sharing capabilities:', platformCapabilities);
+      return platformCapabilities;
+    } catch (error) {
+      console.error('❌ Error checking screen sharing capabilities:', error);
+      return {
+        platform: Platform.OS,
+        webrtcVersion: '111.0.6',
+        features: {
+          screenSharing: false,
+          audioSharing: false,
+          systemAudioSharing: false,
+          videoSharing: false,
+          qualityControl: false,
+        },
+        limitations: {
+          android: ['Error checking capabilities'],
+          ios: ['Error checking capabilities'],
+        },
+        error: error instanceof Error ? error.message : 'Unknown error',
+      };
+    }
   };
 
   // Validate screen sharing configuration

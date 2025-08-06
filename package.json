@@ -16,7 +16,8 @@
     "ios:live": "node scripts/set-env.js live && react-native run-ios",
     "env:local": "cp .env.local .env",
     "env:live": "cp .env.live .env",
-    "env:show": "cat .env"
+    "env:show": "cat .env",
+    "test:screen-sharing": "node scripts/test-screen-sharing.js"
   },
   "dependencies": {
     "@expo/vector-icons": "^14.1.0",

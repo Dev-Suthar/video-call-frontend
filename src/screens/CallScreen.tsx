@@ -259,11 +259,43 @@ const CallScreen = () => {
 
         {/* Screen Share Video */}
         {state.screenSharingUser && state.screenStream && (
-          <RTCView
-            streamURL={state.screenStream.toURL()}
-            style={styles.screenVideo}
-            objectFit="contain"
-          />
+          <>
+            <RTCView
+              streamURL={state.screenStream.toURL()}
+              style={styles.screenVideo}
+              objectFit="contain"
+            />
+            {/* Debug info for screen sharing */}
+            {__DEV__ && (
+              <View
+                style={[
+                  styles.debugInfo,
+                  {position: 'absolute', top: 100, left: 20, zIndex: 20},
+                ]}>
+                <Text style={styles.debugText}>Screen Sharing Debug:</Text>
+                <Text style={styles.debugText}>
+                  User: {state.screenSharingUser}
+                </Text>
+                <Text style={styles.debugText}>
+                  Tracks: {state.screenStream.getTracks().length}
+                </Text>
+                <Text style={styles.debugText}>
+                  Video Tracks: {state.screenStream.getVideoTracks().length}
+                </Text>
+                <Text style={styles.debugText}>
+                  Audio Tracks: {state.screenStream.getAudioTracks().length}
+                </Text>
+                <Text style={styles.debugText}>
+                  Stream ID: {state.screenStream.id}
+                </Text>
+                {state.screenStream.getVideoTracks()[0] && (
+                  <Text style={styles.debugText}>
+                    Track ID: {state.screenStream.getVideoTracks()[0].id}
+                  </Text>
+                )}
+              </View>
+            )}
+          </>
         )}
 
         {/* Screen Sharing Indicator */}
@@ -460,14 +492,22 @@ const CallScreen = () => {
         <TouchableOpacity
           style={[styles.controlButton, styles.testButton]}
           onPress={async () => {
-            console.log('🧪 Running screen sharing tests...');
+            console.log('🧪 Running enhanced screen sharing tests...');
             try {
               const results = await runScreenSharingTests();
+              const capabilities = await getScreenSharingCapabilities();
+
               Alert.alert(
-                'Screen Sharing Tests',
-                `Tests completed!\n\nConfiguration: ✅\nCapabilities: ✅\nPermissions: ✅\nFunctionality: ${
+                'Enhanced Screen Sharing Tests',
+                `Tests completed!\n\nConfiguration: ✅\nCapabilities: ${
+                  capabilities.features.screenSharing ? '✅' : '❌'
+                }\nAudio Support: ${
+                  capabilities.features.audioSharing ? '✅' : '❌'
+                }\nSystem Audio: ${
+                  capabilities.features.systemAudioSharing ? '✅' : '❌'
+                }\nFunctionality: ${
                   results.functionality.success ? '✅' : '❌'
-                }\n\nCheck console for details.`,
+                }\n\nCheck console for detailed results.`,
                 [{text: 'OK'}],
               );
             } catch (error) {
